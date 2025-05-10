@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planilha de Trade em Futuros</title>
+    <style>
+        /* [Mantenha todo o seu CSS original aqui] */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        /* ... (todo o resto do seu CSS) ... */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- [Mantenha toda a sua estrutura HTML original aqui] -->
+        <header>
+            <h1>Planilha de Trade em Futuros</h1>
+            <div id="auth-section">
+                <div id="user-info" style="display: none;">
+                    <span id="user-email"></span>
+                    <button onclick="logout()">Sair</button>
+                </div>
+                <div id="login-form">
+                    <input type="email" id="email" placeholder="Email">
+                    <input type="password" id="password" placeholder="Senha">
+                    <button onclick="login()">Entrar</button>
+                    <button onclick="signup()">Cadastrar</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- [Todo o resto do seu HTML original] -->
+    </div>
+
+    <!-- Adicione esses scripts no final do body -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+  // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyB0hu_s1Dodgw3fQeISn20UOXi3kOyEIKo",
+  authDomain: "planilha-de-trade.firebaseapp.com",
+  projectId: "planilha-de-trade",
+  storageBucket: "planilha-de-trade.firebasestorage.app",
+  messagingSenderId: "398116102734",
+  appId: "1:398116102734:web:f9cd9e423ff6f29668591f",
+  measurementId: "G-HFJ91P7TT0"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+        // Inicialize o Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // Variáveis globais
+        let operations = [];
+        let currentUser = null;
+
+        // Sistema de Autenticação
+        function updateAuthUI(user) {
+            const userInfo = document.getElementById('user-info');
+            const loginForm = document.getElementById('login-form');
+            
+            if (user) {
+                currentUser = user;
+                document.getElementById('user-email').textContent = user.email;
+                userInfo.style.display = 'block';
+                loginForm.style.display = 'none';
+                loadOperations();
+            } else {
+                currentUser = null;
+                userInfo.style.display = 'none';
+                loginForm.style.display = 'block';
+                operations = [];
+                renderOperations();
+            }
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+            } catch (error) {
+                alert("Erro no login: " + error.message);
+            }
+        }
+
+        async function signup() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                await auth.createUserWithEmailAndPassword(email, password);
+            } catch (error) {
+                alert("Erro no cadastro: " + error.message);
+            }
+        }
+
+        function logout() {
+            auth.signOut();
+        }
+
+        // Ouvinte de estado de autenticação
+        auth.onAuthStateChanged(updateAuthUI);
+
+        // Operações com o Firestore
+        async function saveOperations() {
+            if (!currentUser) return;
+            
+            try {
+                await db.collection('users').doc(currentUser.uid).set({
+                    operations: operations,
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                console.log("Operações salvas com sucesso!");
+            } catch (error) {
+                console.error("Erro ao salvar operações: ", error);
+            }
+        }
+
+        async function loadOperations() {
+            if (!currentUser) return;
+            
+            try {
+                const doc = await db.collection('users').doc(currentUser.uid).get();
+                if (doc.exists) {
+                    operations = doc.data().operations || [];
+                    renderOperations();
+                    updateAllAnalyses();
+                }
+            } catch (error) {
+                console.error("Erro ao carregar operações: ", error);
+            }
+        }
+
+        // Modifique suas funções existentes para usar saveOperations() em vez de saveToLocalStorage()
+        function addOperation() {
+            const newOperation = {
+                id: Date.now(),
+                date: new Date().toISOString().split('T')[0],
+                asset: '',
+                direction: 'Long',
+                entryValue: 0,
+                entryPrice: 0,
+                exitPrice: 0,
+                leverage: 1,
+                setup: '',
+                entryFee: 0,
+                exitFee: 0
+            };
+            
+            operations.push(newOperation);
+            saveOperations(); // Alterado para salvar no Firebase
+            renderOperations();
+            updateAllAnalyses();
+        }
+
+        function updateOperation(id, field, value) {
+            const operation = operations.find(op => op.id === id);
+            if (operation) {
+                operation[field] = field === 'date' ? value : 
+                                 field === 'entryValue' || field === 'entryPrice' || 
+                                 field === 'exitPrice' || field === 'entryFee' || 
+                                 field === 'exitFee' ? parseFloat(value) :
+                                 field === 'leverage' ? parseInt(value) : value;
+                
+                saveOperations(); // Alterado para salvar no Firebase
+                updateAllAnalyses();
+            }
+        }
+
+        function deleteOperation(id) {
+            operations = operations.filter(op => op.id !== id);
+            saveOperations(); // Alterado para salvar no Firebase
+            renderOperations();
+            updateAllAnalyses();
+        }
+
+        // [Mantenha todas as suas outras funções originais como renderOperations(), calculateResultDollar(), etc.]
+        // Apenas substitua todas as chamadas de saveToLocalStorage() por saveOperations()
+        // e remova a função loadFromLocalStorage() pois agora usamos loadOperations()
+
+        // Inicialização dos gráficos (mantenha igual)
+        let capitalChart, monthlyPerformanceChart, yearlyPerformanceChart, drawdownChart;
+
+        function initCharts() {
+            const ctx1 = document.getElementById('capital-chart').getContext('2d');
+            const ctx2 = document.getElementById('monthly-performance-chart').getContext('2d');
+            const ctx3 = document.getElementById('yearly-performance-chart').getContext('2d');
+            const ctx4 = document.getElementById('drawdown-chart').getContext('2d');
+            
+            capitalChart = new Chart(ctx1, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: { display: true, text: 'Performance do Capital' }
+                    }
+                }
+            });
+            
+            monthlyPerformanceChart = new Chart(ctx2, {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: { display: true, text: 'Performance Mensal' }
+                    }
+                }
+            });
+            
+            yearlyPerformanceChart = new Chart(ctx3, {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: { display: true, text: 'Performance Anual' }
+                    }
+                }
+            });
+            
+            drawdownChart = new Chart(ctx4, {
+                type: 'line',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: { display: true, text: 'Drawdown Histórico' }
+                    }
+                }
+            });
+        }
+
+        // Inicialize os gráficos quando o DOM estiver carregado
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+        });
+    </script>
+</body>
+</html>
